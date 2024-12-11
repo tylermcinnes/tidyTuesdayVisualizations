@@ -1,0 +1,301 @@
+---
+title: "tidytuesday December 10th 2024"
+format: html
+editor: visual
+---
+
+## Packages
+
+```{r}
+library(tidyverse)
+```
+
+## The data
+
+```{r}
+parfumo_data_clean <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2024/2024-12-10/parfumo_data_clean.csv')
+```
+
+## Explore the data
+
+```{r}
+parfumo_data_clean |> colnames()
+parfumo_data_clean |> head()
+parfumo_data_clean |> summary()
+```
+
+## Brand ratings
+
+```{r}
+parfumo_data_clean |> 
+  group_by(Brand) |> 
+  summarize(avg_Rating = mean(Rating_Value, na.rm = TRUE)) |> 
+  arrange(desc(avg_Rating)) |> 
+  head()
+```
+
+Hmmm - two brands have a 10/10 rating (at least, I know from the summarize() function that the max is 10, and I'm assuming it's out of 10). I also know from summarize that the rating count ranges from 2 - 2,732, with a median of 19 and a mean of 60 (rating count is the *number of times a perfume was rated*). I'll add in a filter() step, keeping only rows with a rating_count value that is greater than or equal to the median of 19 (note: this removes 272 rows).
+
+```{r}
+parfumo_data_clean |> 
+  filter(Rating_Count >= 19 ) |> 
+  group_by(Brand) |> 
+  summarize(avg_Rating = mean(Rating_Value, na.rm = TRUE)) |> 
+  arrange(desc(avg_Rating)) |> 
+  head()
+```
+
+I have made my first assumption: there is a negative relationship between avg_Rating and Rating_count (fewer ratings allow for a higher avg score). Is this true?
+
+```{r}
+ggplot(data = parfumo_data_clean, mapping = aes(x = Rating_Count, y = Rating_Value)) +
+  geom_point()
+```
+
+It seems there is a relationship between Rating_Value and Rating_Count - one we can probably conceptualize quite well! Scents with fewer ratings exhibit the highest and lowest values, while scents with more ratings are gravitating towards a point just below 7.5. The mean and median Rating_Value is 7.35 and 7.40 respectively. It makes sense that as the number of ratings increases, the average rating converges on a middle-ground. I think this is reasonable grounds to filter our data based on a Rating_Count threshold.
+
+I need to set a filter threshold, and I'll use the median value of Rating_Count (19).
+
+I'll also take a guess that there will be relationship between Rating_Count and Release_Year. I imagine that newer perfumes will have more ratings due to the internet, marketing, and population.
+
+```{r}
+ggplot(data = parfumo_data_clean, mapping = aes(x = Release_Year, y = Rating_Count)) +
+  geom_point()
+```
+
+Many rows are excluded due to no Release_Year data, but still, we can see that the number of times a perfume was rated has increased over the years.
+
+### Which brands have the highest average rating across their perfumes?
+
+```{r}
+parfumo_data_clean |> 
+  filter(Rating_Count >= 19 ) |> 
+  group_by(Brand) |> 
+  summarize(avg_Rating = mean(Rating_Value, na.rm = TRUE),
+            number_Perfumes = n()) |> 
+  arrange(desc(avg_Rating)) |> 
+  head(n = 10)
+```
+
+I can see an issue here - some of these brands have only one or two perfumes. Conceivably, it would be difficult for brands with e.g., 100 perfumes to consistently receive such high ratings, and they will therefore not show up in this list. This is essentially the same issue dealt with above - having fewer ratings, or fewer products, means an average score can be skewed.
+
+To deal with this, I've added an arbitrary filtering threshold for a brand to have 20 or more perfumes in order to be considered.
+
+```{r}
+parfumo_data_clean |> 
+  filter(Rating_Count >= 19 ) |> 
+  group_by(Brand) |> 
+  summarize(avg_Rating = round(mean(Rating_Value, na.rm = TRUE), 1),
+            number_Perfumes = n()) |> 
+  filter(number_Perfumes >= 20) |> 
+  arrange(desc(avg_Rating)) |> 
+  head(n = 10)
+```
+
+### Brand Rating Data
+
+```{r}
+brandRatingData <- parfumo_data_clean |> 
+  filter(Rating_Count >= 19 ) |> 
+  group_by(Brand) |> 
+  summarize(avg_Rating = mean(Rating_Value, na.rm = TRUE),
+            number_Perfumes = n()) |> 
+  filter(number_Perfumes >= 20) |> 
+  arrange(desc(avg_Rating)) |> 
+  head(n = 20)
+```
+
+### Visualisations
+
+```{r}
+ggplot(brandRatingData, 
+       aes(x = avg_Rating, y = reorder(Brand, avg_Rating))) +
+  geom_point(aes(size = number_Perfumes, color = avg_Rating)) +
+  scale_color_gradient(low = "lightblue", high = "darkblue", name = "Brand rating") +
+  scale_size(range = c(1, 10), name = "Number of perfumes") +
+  labs(
+    x = "Brand rating",
+    y = "Brand",
+    title = "Mean perfume rating by brand"
+  ) +
+  theme_light() +
+  theme(
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 12, face = "bold"),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5)
+  ) +
+  guides(color = "none")
+```
+
+#### Updating the visualization with themes and colour options
+
+Looking at this plot, what can I do to enhance the visuals to be cleaner, more dynamic, more eye-catching, more aesthetic? Is there any other data I can include to improve the plot?
+
+```{r}
+# Add a new summarize output: the average rating count.
+brandRatingData <- parfumo_data_clean |> 
+  filter(Rating_Count >= 19 ) |> 
+  group_by(Brand) |> 
+  summarize(avg_Rating = mean(Rating_Value, na.rm = TRUE),
+            number_Perfumes = n(),
+            avg_rating_count = mean(Rating_Count)) |> 
+  filter(number_Perfumes >= 20) |> 
+  arrange(desc(avg_Rating)) |> 
+  head(n = 20)
+```
+
+```{r}
+library(viridis)
+library(ggtext)
+
+ggplot(brandRatingData, 
+       aes(x = avg_Rating, y = reorder(Brand, avg_Rating))) +
+  geom_point(aes(size = number_Perfumes, color = avg_rating_count)) +
+  scale_color_viridis(option = "magma", direction = -1, name = "Mean number of ratings") +
+  scale_size(range = c(1, 10), name = "Number of perfumes") +
+  labs(
+    x = "Brand rating",
+    y = "Brand",
+    title = "Top 20 Perfume Brands Ranked by Mean Rating"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 10, color = "gray40"),
+    axis.title = element_text(size = 12, face = "bold", color = "gray50"),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5, color = "gray50"),
+    legend.title = element_text(size = 12, face = "bold", color = "gray50"), 
+    legend.text = element_text(size = 10, color = "gray40"),
+    plot.subtitle = element_textbox_simple(size = 12, color = "gray50", 
+                                           margin = margin(t = 30, b = 30), 
+                                           width = unit(1, "npc"))
+  ) 
+```
+
+## Conclusions
+
+Initially I wasn't utilising colour mapping for anything useful, but then added colour as a way to visualize the total number of ratings (not shown here), and eventually average number of ratings. Total number of ratings showed Roja Parfums, Chanel, and Guerlain as positive outliers with a high number of ratings relative to the other 17 brands. Average number of ratings shows that while Ensar Oud / Oriscent have the highest average brand rating, Roja Parfums and Chanel have a much higher average *number* of ratings, which further supports them as a good brand to choose.
+
+As a data story, I really like this: based on Brand rating alone, one might choose Ensar Oud, but with a more full picture, I'd personally be inclined to choose Roja Parfums or Chanel - the difference in Brand rating between them and Ensar Oud is very small, but with Chanel there are approximately **five times** as many ratings, giving the overall brand rating much more weight.
+
+### Notes
+
+This plot was made with some consultation of (Steven Ponce's visualization of the same data set)\[https://stevenponce.netlify.app/data_visualizations/TidyTuesday/2024/tt_2024_50.html\].
+
+My version aimed to use a plot type I recently discovered in (clusterProfiler)\[https://carpentries-incubator.github.io/bioc-rnaseq/07-gene-set-analysis.html#ora-with-clusterprofiler\]. I called on chatGPT to help me with creating a similar plot without the clusterProfiler package, and then made modifications from there.
+
+## Further work (unfinished)
+
+#### How many perfumes do brands produce?
+
+```{r}
+parfumo_data_clean |> 
+  group_by(Brand) |> 
+  summarize(number_Perfumes = n(),
+            avg_release_year = round(mean(Release_Year, na.rm = TRUE), 0 )) |> 
+  arrange(desc(number_Perfumes)) |> 
+  head(n = 10)
+```
+
+### Perfume names
+
+Names are very important, something we attach power and significance to. Perfume names must have been chosen very carefully. What trends can I identify in the names?
+
+```{r}
+parfumo_data_clean$Name |> table() |> sort(decreasing = T) |> head(n = 10)
+```
+
+Some names are much more common than I expected! Are these names repeated across different brands, or are they annual releases? How many perfume names are non-unique?
+
+```{r}
+parfumo_data_clean$Name |> table() |> sort(decreasing = T) |> as.data.frame() |> filter(Freq == 1) |> dim()
+# 53,010 perfume names appear only a single time. 
+parfumo_data_clean$Name |> table() |> sort(decreasing = T) |> as.data.frame() |> filter(Freq > 1) |> dim()
+# 2,109 perfume names appear more than once. 
+```
+
+Are the repeat names from the same brand, or different brands?
+
+```{r}
+perfume_across_brand <- parfumo_data_clean |> 
+  group_by(Name) |> 
+  summarize(brand_count = n_distinct(Brand), .groups = "drop") |> 
+  filter(brand_count > 1)
+
+perfume_across_brand |> head()
+```
+
+```{r}
+repeated_perfumes_within_brand <- parfumo_data_clean |> 
+  group_by(Brand, Name) |> 
+  summarize(count = n(), .groups = "drop") |> 
+  filter(count > 1)
+
+repeated_perfumes_within_brand |> head()
+repeated_perfumes_within_brand |> arrange(desc(count)) |> print(n = 5)
+```
+
+```{r}
+brands_reuse_perfume_names <- parfumo_data_clean |> 
+  group_by(Brand, Name) |> 
+  summarize(count = n(), .groups = "drop") |> 
+  filter(count > 1) |> 
+  group_by(Brand) |> 
+  summarize(total_repeats = sum(count - 1), .groups = "drop") |> 
+  arrange(desc(total_repeats))
+
+brands_reuse_perfume_names |> head()
+```
+
+Is repetition of names associated with total number of perfumes in the brand's catalogue?
+
+```{r}
+brands_with_most_repeats <- parfumo_data_clean %>%
+group_by(Brand, Name) |> 
+  summarize(count = n(), .groups = "drop") |> 
+  mutate(repeat_count = ifelse(count > 1, count - 1, 0)) |>  # Calculate repeats for each Name
+  group_by(Brand) |> 
+  summarize(
+    total_repeats = sum(repeat_count),           # Total number of repeats
+    Catalogue = n_distinct(Name),               # Total number of unique Names
+    .groups = "drop"
+  ) |> 
+  arrange(desc(total_repeats))
+
+print(brands_with_most_repeats)
+```
+
+#### Logic testing
+
+The above code was written with the help of chatGPT, and therefore needs to be critically assessed (even more so than my own code, which is at least likely to fail more obviously).
+
+What checks can I perform here?
+
+-   Are the dimensions what I expect? Dim is 1,452 x 3. Where does 1452 come from, can I verify this is correct?
+
+-   Catalogue is the total number of unique perfume names for each brand. a) Do I agree with using unique names for my question, or should I be using total names for each brand? b) Can I calculate Catalogue independently, using different code, that reaches the same output as the code block above?
+
+-   total_repeats is the total number of times a brand re-uses the perfume name. Can I calculate this value independently, using different code, that reaches the same output as the code block above?
+
+-   Once I've verified, I will go on to ask my actual question, which is: what is the relationship between Catalogue size and total number of times a brand re-uses a perfume name?
+
+##### Catalogue
+
+Catalogue is the total number of unique perfume names for each brand. I can use n() or n_distinct(Name) to count the total number of perfumes available per brand, or the total number of unique (distinct) perfumes. Using n_distinct(Brand) confirms there are 1452 brands in the dataset, which matches the number of
+
+```{r}
+parfumo_data_clean |> group_by(Brand) |> summarize(catalogue = n())
+# n counts the number of Names per Brand
+parfumo_data_clean |> group_by(Brand) |> summarize(catalogue = n_distinct(Name))
+# n_distinct counts the number of *unique* names per Brand. 
+
+parfumo_data_clean |> summarize(catalogue = n_distinct(Brand))
+# Here, I'm using summarize and n_distinct(Brand) to check the number of unique Brands (1,452).
+```
+
+Plot catalogue size against repetition of names:
+
+```{r}
+ggplot(brands_with_most_repeats, 
+       mapping = aes(x = total_repeats, y = Catalogue)) +
+  geom_point()
+```
